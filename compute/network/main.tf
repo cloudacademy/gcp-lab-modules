@@ -40,12 +40,12 @@ resource "google_compute_firewall" "vm_network_allow_ssh" {
 
 # Outputs
 
-output "vm_network_id" {
+output "network_id" {
     description = "The ID of the VM network"
     value       = google_compute_network.vm_network.id
 }
 
-output "vm_subnet_id" {
+output "subnet_id" {
     description = "The ID of the VM subnetwork"
     value       = google_compute_subnetwork.vm_subnet.id
 }

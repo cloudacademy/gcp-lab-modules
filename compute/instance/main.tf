@@ -28,6 +28,7 @@ variable "subnetwork_id" {
 variable "startup_script" {
     description = "The startup script to run on instance creation"
     type        = string
+    default     = ""
 }
 
 variable "service_account_email" {

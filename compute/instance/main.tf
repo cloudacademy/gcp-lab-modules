@@ -36,9 +36,15 @@ variable "service_account_email" {
     type        = string
 }
 
+variable "instance_name" {
+  description = "Name of the compute instance"
+  type        = string
+  default     = "ca-lab-vm"
+}
+
 # VM instance resource
 resource "google_compute_instance" "ca_lab_vm" {
-    name         = "ca-lab-vm"
+    name         = var.instance_name
     machine_type = var.machine_type
     zone         = var.zone
 

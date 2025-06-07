@@ -42,6 +42,12 @@ variable "instance_name" {
   default     = "ca-lab-vm"
 }
 
+variable "network_ip" {
+  description = "The internal IP address to assign to the instance's primary network interface."
+  type        = string
+  default     = null # Set to null to make it optional
+}
+
 # VM instance resource
 resource "google_compute_instance" "ca_lab_vm" {
     name         = var.instance_name
@@ -57,6 +63,7 @@ resource "google_compute_instance" "ca_lab_vm" {
     network_interface {
         network    = var.network_id
         subnetwork = var.subnetwork_id
+        network_ip = var.network_ip
         access_config {}
     }
 

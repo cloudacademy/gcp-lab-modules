@@ -48,6 +48,12 @@ variable "network_ip" {
   default     = null # Set to null to make it optional
 }
 
+variable "service_account_scopes" {
+  description = "List of OAuth 2.0 scopes for the service account"
+  type        = list(string)
+  default     = ["https://www.googleapis.com/auth/cloud-platform"]
+}
+
 # VM instance resource
 resource "google_compute_instance" "ca_lab_vm" {
     name         = var.instance_name
@@ -71,7 +77,7 @@ resource "google_compute_instance" "ca_lab_vm" {
 
     service_account {
         email  = var.service_account_email
-        scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+        scopes = var.service_account_scopes
     }
 }
 

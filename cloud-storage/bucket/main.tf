@@ -1,7 +1,7 @@
 variable "name_prefix" {
   description = "The prefix for the bucket name."
   type        = string
-  default     = "calabs-bucket"
+  default     = "qalabs-bucket"
 }
 
 variable "bucket_name" {

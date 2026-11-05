@@ -14,6 +14,12 @@ variable "zone" {
   type        = string
 }
 
+variable "image" {
+  description = "The boot disk image for the container VM"
+  type        = string
+  default     = "debian-cloud/debian-12"
+}
+
 variable "network_id" {
   description = "The ID of the network to attach the instance to"
   type        = string
@@ -62,31 +68,63 @@ variable "restart_policy" {
   description = "Restart policy for the container (Always, OnFailure, Never)"
   type        = string
   default     = "Always"
-}
 
-# Use the Google container VM module to generate container metadata
-module "gce-container" {
-  source  = "terraform-google-modules/container-vm/google"
-  version = "~> 3.0"
-  
-  container = {
-    image = var.container_image
-    ports = var.container_ports
-    env   = var.container_env
+  validation {
+    condition     = contains(["always", "onfailure", "never"], lower(var.restart_policy))
+    error_message = "restart_policy must be Always, OnFailure, or Never."
   }
-  
-  restart_policy = var.restart_policy
 }
 
-# Create the VM instance with container
+locals {
+  image_arg   = "'${replace(var.container_image, "'", "'\\''")}'"
+  restart_policy = lookup({
+    always    = "always"
+    onfailure = "on-failure"
+    never     = "no"
+  }, lower(var.restart_policy), "always")
+  port_args = join(" ", [
+    for port in var.container_ports : "--publish ${port.hostPort}:${port.containerPort}"
+  ])
+  env_args = join(" ", [
+    for item in var.container_env : "--env '${replace(item.name, "'", "'\\''")}=${replace(item.value, "'", "'\\''")}'"
+  ])
+  container_startup_script = <<-EOT
+    #!/usr/bin/env bash
+    set -euxo pipefail
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y docker.io
+    systemctl enable --now docker
+    docker pull ${local.image_arg}
+    docker rm -f lab-container || true
+    docker run --name lab-container --restart ${local.restart_policy} --detach ${local.port_args} ${local.env_args} ${local.image_arg}
+  EOT
+  host_ports = distinct([for port in var.container_ports : tostring(port.hostPort)])
+}
+
+resource "google_compute_firewall" "container_ports" {
+  name    = "allow-container-vm-ports"
+  network = var.network_id
+
+  allow {
+    protocol = "tcp"
+    ports    = local.host_ports
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["container-vm"]
+}
+
+# Run the container on a standard Debian VM, without gce-container-declaration.
 resource "google_compute_instance" "container_vm" {
   name         = var.instance_name
   machine_type = var.machine_type
   zone         = var.zone
+  tags         = ["container-vm"]
 
   boot_disk {
     initialize_params {
-      image = module.gce-container.source_image
+      image = var.image
     }
   }
 
@@ -96,15 +134,7 @@ resource "google_compute_instance" "container_vm" {
     access_config {}
   }
 
-  metadata = {
-    gce-container-declaration = module.gce-container.metadata_value
-    google-logging-enabled    = "true"
-    google-monitoring-enabled = "true"
-  }
-
-  labels = {
-    container-vm = module.gce-container.vm_container_label
-  }
+  metadata_startup_script = local.container_startup_script
 
   service_account {
     email  = var.service_account_email

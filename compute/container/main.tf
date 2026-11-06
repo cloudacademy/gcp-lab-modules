@@ -15,9 +15,9 @@ variable "zone" {
 }
 
 variable "image" {
-  description = "The boot disk image for the container VM"
+  description = "The COS boot disk image for the container VM"
   type        = string
-  default     = "debian-cloud/debian-12"
+  default     = "cos-cloud/cos-stable"
 }
 
 variable "network_id" {
@@ -43,11 +43,11 @@ variable "container_image" {
 
 variable "container_ports" {
   description = "Ports to expose from the container"
-  type        = list(object({
+  type = list(object({
     containerPort = number
     hostPort      = number
   }))
-  default     = [
+  default = [
     {
       containerPort = 8080
       hostPort      = 8080
@@ -57,11 +57,11 @@ variable "container_ports" {
 
 variable "container_env" {
   description = "Environment variables for the container"
-  type        = list(object({
+  type = list(object({
     name  = string
     value = string
   }))
-  default     = []
+  default = []
 }
 
 variable "restart_policy" {
@@ -76,7 +76,7 @@ variable "restart_policy" {
 }
 
 locals {
-  image_arg   = "'${replace(var.container_image, "'", "'\\''")}'"
+  image_arg = "'${replace(var.container_image, "'", "'\\''")}'"
   restart_policy = lookup({
     always    = "always"
     onfailure = "on-failure"
@@ -88,34 +88,23 @@ locals {
   env_args = join(" ", [
     for item in var.container_env : "--env '${replace(item.name, "'", "'\\''")}=${replace(item.value, "'", "'\\''")}'"
   ])
+  host_firewall_rules = join("\n", flatten([
+    for port in var.container_ports : [
+      "/sbin/iptables -C INPUT -p tcp --dport ${port.hostPort} -j ACCEPT 2>/dev/null || /sbin/iptables -I INPUT 1 -p tcp --dport ${port.hostPort} -j ACCEPT",
+      "/sbin/iptables -C FORWARD -p tcp --dport ${port.containerPort} -j ACCEPT 2>/dev/null || /sbin/iptables -I FORWARD 1 -p tcp --dport ${port.containerPort} -j ACCEPT",
+    ]
+  ]))
   container_startup_script = <<-EOT
     #!/usr/bin/env bash
     set -euxo pipefail
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get update
-    apt-get install -y docker.io
-    systemctl enable --now docker
+    ${local.host_firewall_rules}
     docker pull ${local.image_arg}
     docker rm -f lab-container || true
     docker run --name lab-container --restart ${local.restart_policy} --detach ${local.port_args} ${local.env_args} ${local.image_arg}
   EOT
-  host_ports = distinct([for port in var.container_ports : tostring(port.hostPort)])
 }
 
-resource "google_compute_firewall" "container_ports" {
-  name    = "allow-container-vm-ports"
-  network = var.network_id
-
-  allow {
-    protocol = "tcp"
-    ports    = local.host_ports
-  }
-
-  source_ranges = ["0.0.0.0/0"]
-  target_tags   = ["container-vm"]
-}
-
-# Run the container on a standard Debian VM, without gce-container-declaration.
+# Run the container on COS using its bundled Docker runtime and a startup script.
 resource "google_compute_instance" "container_vm" {
   name         = var.instance_name
   machine_type = var.machine_type
